@@ -7,9 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class TeacherLivenessSpider implements Spider{
@@ -31,7 +29,78 @@ public class TeacherLivenessSpider implements Spider{
     @Override
     public void run() {
 
-        String params = "callCount=1\n" +
+        try {
+            Dwr dwr = getFirstPage();
+            JSONObject datas = dwr.getDatas();
+            JSONObject firstValue = datas.getJSONObject(dwr.getFirstKey());
+
+            long pageCount = Long.parseLong(firstValue.getString("totlePageCount"));
+
+            List<Posts> postsList = parseDwr(dwr);
+
+            //翻页所有
+            for (int i = 2; i <= pageCount && pageCount>1; i++) {
+                Dwr pageDwr = getPage(i);
+                postsList.addAll(parseDwr(pageDwr));
+            }
+
+            calculate(postsList);
+
+        } catch (Exception e) {
+            log.error("io 异常",e);
+        }
+
+
+    }
+
+    private List<Posts> parseDwr(Dwr dwr) throws IOException {
+        JSONObject datas = dwr.getDatas();
+        JSONObject firstValue = datas.getJSONObject(dwr.getFirstKey());
+
+        //分页列表储存的变量名
+        String refeArrayKey = dwr.getRefeArrayKey();
+        JSONArray jsonArray = datas.getJSONArray(refeArrayKey);
+
+        List<Posts> postsList = new ArrayList<>();
+
+        for (Object key : jsonArray) {
+            JSONObject jsonObject = datas.getJSONObject(key.toString());
+            String id = jsonObject.getString("id");
+            String title = jsonObject.getString("title");
+
+            Posts posts = new Posts(id, title);
+
+            String posterRefe = jsonObject.getString("poster");
+            String replyCountStr = jsonObject.getString("countReply");
+            Long countReply = replyCountStr == null ? null : Long.parseLong(replyCountStr);
+
+            String posterRole = null;
+            if (posterRefe != null && !"null".equals(posterRefe)) {
+                JSONObject poster = datas.getJSONObject(posterRefe);
+                String rolesKey = poster.getString("roles");
+                if (rolesKey != null && !"null".equals(rolesKey)) {
+                    JSONArray roles = datas.getJSONArray(rolesKey);
+                    posterRole = roles.stream().map(Object::toString).findFirst().orElse(null);
+                }
+            }
+
+            posts.setPosterRoles(posterRole);
+            posts.setReplyers(countReply);
+
+            log.info("查看帖子 \"{}\",帖子id ={}", title, id);
+
+            posts = getReplys(posts);
+
+            postsList.add(posts);
+        }
+
+        return postsList;
+    }
+
+
+    private Dwr getPage(long pageNum) throws IOException {
+
+        String params = String.format("callCount=1\n" +
                 "scriptSessionId=${scriptSessionId}190\n" +
                 "httpSessionId=7fcf567154ee459593e4b3edc7863880\n" +
                 "c0-scriptName=PostBean\n" +
@@ -40,84 +109,51 @@ public class TeacherLivenessSpider implements Spider{
                 "c0-param0=number:1002458005\n" +
                 "c0-param1=string:\n" +
                 "c0-param2=number:1\n" +
-                "c0-param3=string:4\n" +
+                "c0-param3=string:%s\n" +
                 "c0-param4=number:20\n" +
                 "c0-param5=boolean:false\n" +
                 "c0-param6=null:null\n" +
-                "batchId=1613641114939";
+                "batchId=1613641114939",pageNum);
 
-        try {
-            String html = ReqUtils.post(params,URL);
-            Dwr dwr = new Dwr(StringEscapeUtils.unescapeJava(html));
-            JSONObject datas = dwr.getDatas();
+        String html = ReqUtils.post(params,URL);
+        Dwr dwr = new Dwr(StringEscapeUtils.unescapeJava(html));
+        return dwr;
+    }
 
-            //分页列表储存的变量名
-            String refeArrayKey = dwr.getRefeArrayKey();
-            JSONArray jsonArray = datas.getJSONArray(refeArrayKey);
+    private Dwr getFirstPage() throws IOException {
+        return getPage(1);
+    }
 
-            List<Posts> postsList = new ArrayList<>();
+    /**
+     * 计算教师和学生活跃度
+     * @param postsList
+     */
+    private void  calculate(List<Posts> postsList){
+        long lectorCount = postsList.stream().filter(t -> LECTOR_KEY.equals(t.getPosterRoles())).count();
+        long assistantCount= postsList.stream().filter(t -> ASSISTANT_KEY.equals(t.getPosterRoles())).count();
+        long lectorRepCount = postsList.stream().filter(t -> t.getLectorReplyers()!=null)
+                .filter(t -> t.getLectorReplyers()>0).count();
+        long assistantRepCount = postsList.stream().filter(t -> t.getAssistantReplyers()!=null)
+                .filter(t -> t.getAssistantReplyers()>0).count();
 
-            for(Object key:jsonArray){
-                JSONObject jsonObject = datas.getJSONObject(key.toString());
-                String id = jsonObject.getString("id");
-                String title = jsonObject.getString("title");
+        Double a = Double.valueOf(postsList.size());
+        Double b = Double.valueOf(lectorCount);
+        Double c = Double.valueOf(assistantCount);
+        Double d = Double.valueOf(lectorRepCount);
+        Double e = Double.valueOf(assistantRepCount);
 
-                Posts posts = new Posts(id,title);
+        Double tLiveness = d/(a-b-c)+0.5*e/(a-b-c);
 
-                String posterRefe = jsonObject.getString("poster");
-                String replyCountStr = jsonObject.getString("countReply");
-                Long countReply = replyCountStr==null?null:Long.parseLong(replyCountStr);
-
-                String posterRole = null;
-                if(posterRefe!=null && !"null".equals(posterRefe)){
-                    JSONObject poster = datas.getJSONObject(posterRefe);
-                    String rolesKey = poster.getString("roles");
-                    if(rolesKey!=null && !"null".equals(rolesKey)){
-                        JSONArray roles = datas.getJSONArray(rolesKey);
-                        posterRole = roles.stream().map(Object::toString).findFirst().orElse(null);
-                    }
-                }
-
-                posts.setPosterRoles(posterRole);
-                posts.setReplyers(countReply);
-
-                log.info("查看帖子 \"{}\",帖子id ={}",title,id);
-
-                posts = getReplys(posts);
-
-                postsList.add(posts);
-            }
-
-            long lectorCount = postsList.stream().filter(t -> LECTOR_KEY.equals(t.getPosterRoles())).count();
-            long assistantCount= postsList.stream().filter(t -> ASSISTANT_KEY.equals(t.getPosterRoles())).count();
-            long lectorRepCount = postsList.stream().filter(t -> t.getLectorReplyers()!=null)
-                    .filter(t -> t.getLectorReplyers()>0).count();
-            long assistantRepCount = postsList.stream().filter(t -> t.getAssistantReplyers()!=null)
-                    .filter(t -> t.getAssistantReplyers()>0).count();
-
-            Double a = Double.valueOf(postsList.size());
-            Double b = Double.valueOf(lectorCount);
-            Double c = Double.valueOf(assistantCount);
-            Double d = Double.valueOf(lectorRepCount);
-            Double e = Double.valueOf(assistantRepCount);
-
-            Double tLiveness = d/(a-b-c)+0.5*e/(a-b-c);
-
-            log.info("帖子总数={},老师发帖数量={},助教发帖数量={},老师参与回帖数量={},助教参与回帖数量={}，教师活跃度= {}",
-                    postsList.size(),lectorCount,assistantCount,lectorRepCount,assistantRepCount,tLiveness);
+        log.info("帖子总数={},老师发帖数量={},助教发帖数量={},老师参与回帖数量={},助教参与回帖数量={}，教师活跃度= {}",
+                postsList.size(),lectorCount,assistantCount,lectorRepCount,assistantRepCount,tLiveness);
 
 
-            long count = postsList.stream().filter(t -> LECTOR_KEY.equals(t.getPosterRoles()) || ASSISTANT_KEY.equals(t.getPosterRoles()))
-                    .map(Posts::getReplyers).count();
+        long count = postsList.stream().filter(t -> LECTOR_KEY.equals(t.getPosterRoles()) || ASSISTANT_KEY.equals(t.getPosterRoles()))
+                .map(Posts::getReplyers).count();
 
-            Double sLiveness = Double.valueOf(count)/(a+b);
+        Double sLiveness = Double.valueOf(count)/(a+b);
 
-            log.info("老师发帖和助教发帖的总回帖数 = {},学生活跃度={}",count,sLiveness);
-
-
-        } catch (IOException e) {
-            log.error("io 异常",e);
-        }
+        log.info("老师发帖和助教发帖的总回帖数 = {},学生活跃度={}",count,sLiveness);
     }
 
 

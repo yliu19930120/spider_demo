@@ -6,7 +6,7 @@ public class SpiderMain {
 
 
     public static void main(String[] args) throws IOException {
-        new TeacherLivenessSpider().run();
+        new DegreeSpider().run();
     }
 
 

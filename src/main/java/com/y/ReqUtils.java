@@ -22,4 +22,18 @@ public class ReqUtils {
         Response response = CLIENT.newCall(request).execute();
         return response.body().string();
     }
+
+    public static String post(MediaType mediaType,String params,String url) throws  IOException{
+        RequestBody requestBody = RequestBody.create(params,mediaType);
+        Request request = new Request.Builder().url(url).post(requestBody).build();
+        Response response = CLIENT.newCall(request).execute();
+        return response.body().string();
+    }
+
+    public static String post(Headers headers,MediaType mediaType,String params,String url) throws  IOException{
+        RequestBody requestBody = RequestBody.create(params,mediaType);
+        Request request = new Request.Builder().url(url).headers(headers).post(requestBody).build();
+        Response response = CLIENT.newCall(request).execute();
+        return response.body().string();
+    }
 }
