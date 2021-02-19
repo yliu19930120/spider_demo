@@ -3,6 +3,7 @@ package com.y;
 import okhttp3.*;
 
 import java.io.IOException;
+import java.util.Map;
 
 public class ReqUtils {
 
@@ -30,8 +31,7 @@ public class ReqUtils {
         return response.body().string();
     }
 
-    public static String post(Headers headers,MediaType mediaType,String params,String url) throws  IOException{
-        RequestBody requestBody = RequestBody.create(params,mediaType);
+    public static String post(Headers headers, RequestBody requestBody, String url) throws  IOException{
         Request request = new Request.Builder().url(url).headers(headers).post(requestBody).build();
         Response response = CLIENT.newCall(request).execute();
         return response.body().string();

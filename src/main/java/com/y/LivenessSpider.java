@@ -10,11 +10,14 @@ import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class TeacherLivenessSpider implements Spider{
+/**
+ * 活跃度爬虫
+ */
+public class LivenessSpider implements Spider{
 
 //    private static final String URL = "https://www.icourse163.org/learn/SEU-1207045808?tid=1207406205#/learn/forumindex";
 
-    private static Logger log = LoggerFactory.getLogger(TeacherLivenessSpider.class);
+    private static Logger log = LoggerFactory.getLogger(LivenessSpider.class);
 
     //讨论区发帖地址
     private static final String URL = "https://www.icourse163.org/dwr/call/plaincall/PostBean.getAllPostsPagination.dwr";
@@ -29,8 +32,15 @@ public class TeacherLivenessSpider implements Spider{
     @Override
     public void run() {
 
+
+        String courseId = "1002458005";
+
+        getByCourseId(courseId);
+    }
+
+    private void getByCourseId(String courseId){
         try {
-            Dwr dwr = getFirstPage();
+            Dwr dwr = getFirstPage(courseId);
             JSONObject datas = dwr.getDatas();
             JSONObject firstValue = datas.getJSONObject(dwr.getFirstKey());
 
@@ -40,7 +50,7 @@ public class TeacherLivenessSpider implements Spider{
 
             //翻页所有
             for (int i = 2; i <= pageCount && pageCount>1; i++) {
-                Dwr pageDwr = getPage(i);
+                Dwr pageDwr = getPage(i,courseId);
                 postsList.addAll(parseDwr(pageDwr));
             }
 
@@ -49,8 +59,6 @@ public class TeacherLivenessSpider implements Spider{
         } catch (Exception e) {
             log.error("io 异常",e);
         }
-
-
     }
 
     private List<Posts> parseDwr(Dwr dwr) throws IOException {
@@ -98,7 +106,7 @@ public class TeacherLivenessSpider implements Spider{
     }
 
 
-    private Dwr getPage(long pageNum) throws IOException {
+    private Dwr getPage(long pageNum,String courseId) throws IOException {
 
         String params = String.format("callCount=1\n" +
                 "scriptSessionId=${scriptSessionId}190\n" +
@@ -106,22 +114,22 @@ public class TeacherLivenessSpider implements Spider{
                 "c0-scriptName=PostBean\n" +
                 "c0-methodName=getAllPostsPagination\n" +
                 "c0-id=0\n" +
-                "c0-param0=number:1002458005\n" +
+                "c0-param0=number:%s\n" +
                 "c0-param1=string:\n" +
                 "c0-param2=number:1\n" +
                 "c0-param3=string:%s\n" +
                 "c0-param4=number:20\n" +
                 "c0-param5=boolean:false\n" +
                 "c0-param6=null:null\n" +
-                "batchId=1613641114939",pageNum);
+                "batchId=1613641114939",courseId,pageNum);
 
         String html = ReqUtils.post(params,URL);
         Dwr dwr = new Dwr(StringEscapeUtils.unescapeJava(html));
         return dwr;
     }
 
-    private Dwr getFirstPage() throws IOException {
-        return getPage(1);
+    private Dwr getFirstPage(String courseId) throws IOException {
+        return getPage(1,courseId);
     }
 
     /**
